@@ -1,0 +1,16 @@
+* Emacs New
+
+DRAFT * DRAFT * DRAFT
+- This is *NOT YET READY FOR YOU*!
+
+Emacs > version 31.1 is now more powerful and more mature.
+- Less configuration is required to make it perform well.
+- Better packages are available.
+- Emacs is easier to hack on
+  - Lexical Binding
+  - Many Common Lisp features
+  - et al
+
+It's time for a new Emacs Profile!
+- Simpler as well as more elegant than what I've done before!
+- Somewhat inspired by Emacs-Bedrock
