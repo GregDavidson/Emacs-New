@@ -1,0 +1,25 @@
+* Materials from Emacs-Bedrock
+
+The files in this directory have been copied and adapted from
+- the Emacs-Bedrock Emacs Prelude
+- by Ashton Wiersdorf
+- https://codeberg.org/ashton314/emacs-bedrock
+
+Emacs-Bedrock is an excellent starter kit (prelude) for Emacs!
+
+Ashton has expressed the viewpoint that Emacs-Bedrock users should be
+free to modify his code to suit their needs.
+
+I have placed all of the code I find useful from Emacs-Bedrock in this
+single directory, with links modified where necessary to reflect that
+change.
+
+I have added code to allow the individual features of Emacs-Bedrock to
+be turned on or off, with defaults set to my preferences in my
+early-init.el or init.el files.
+
+From time to time I may update the code in this directory from newer
+versions of Emacs-Bedrock.
+
+The LICENCE file in this directory applies to any and all code which I
+have copied from Emacs-Bedrock.
