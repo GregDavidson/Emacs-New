@@ -1,0 +1,9 @@
+*~
+*#
+*.swp
+TAGS
+*.elc
+.emacs.desktop
+.emacs.desktop.lock
+LINKS.org
+Limbo

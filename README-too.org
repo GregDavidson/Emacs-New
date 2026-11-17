@@ -1,0 +1,83 @@
+* Bedrock Issues
+
+** emacslient Theme
+
+emacsclient is coming up in dark mode!
+- until I set the theme
+
+** Jinx Mode
+
+Whatever it is, it's causing this error:
+
+Jinx: Compiling jinx-mod.so
+Jinx: pkgconf or pkg-config not found
+gcc -I. -O2 -Wall -Wextra -fPIC -shared -o jinx-mod.so jinx-mod.c -I/usr/include/enchant-2 -I/usr/local/include/enchant-2 -L/usr/local/lib -lenchant-2
+jinx-mod.c:21:10: fatal error: enchant.h: No such file or directory
+   21 | #include <enchant.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+Jinx: Compilation of jinx-mod.so failed
+
+** Changing Bedrock files
+
+Changing files that are part of Emacs-Bedrock's git repository makes
+it difficult to pull in new versions of same.
+
+Ideally I'd only change my files which would be loaded from
+- Bedrock's files
+  - early-init.el
+  - init.el
+  - extras/*.el
+
+Emacs-Bedrock should set
+- custom-set-file
+for the same reason!
+
+** use Org-Mode and Outshine-Mode
+
+Emacs-Bedrock should use OrgMode files instead of Markdown Files.
+
+Emacs-Bedrock should use Outshine-Mode or similar for their elisp files!
+    
+** My Posted Issues
+
+*** [[https://codeberg.org/ashton314/emacs-bedrock/issues/72][Jinx setup fails in extras/writer.el on Linux Mint 22.1 #72]]
+
+When I tried to load extras/writer.el I got
+
+#+begin_example
+  Jinx: Compiling jinx-mod.so
+  Jinx: pkgconf or pkg-config not found
+  gcc -I. -O2 -Wall -Wextra -fPIC -shared -o jinx-mod.so jinx-mod.c -I/usr/include/enchant-2 -I/usr/localinclude/enchant-2 -L/usr/local/lib -lenchant-2 jinx-mod.c:21:10: fatal error: enchant.h: No such file or directory
+  21 | #include <enchant.h>
+  | ^~~~~~~~~~~
+  compilation terminated.
+  Jinx: Compilation of jinx-mod.so failed
+#+end_example
+
+
+*** [[https://codeberg.org/ashton314/emacs-bedrock/issues/73][Please consider gating features in your init files so they can be upgraded with a pull #73]]
+
+I love the curated minimum of emacs-bedrock!
+
+I like most of what's in the Bedrock init files
+- but not quite everything!
+
+If I change those files
+- then it's difficult to upgrade to a new emacs-bedrock version with a simple pull.
+
+My suggestion to fix this
+- rename extras/ to bedrock/
+- move existing early-init.el and init.el to bedrock/
+- add a check before each feature in all bedrock/*.el files which checks if that feature is NOT wanted
+- create new early-init.el and init.el files which simply load the bedrock files, along with a comment about how to turn any unwanted features off.
+
+This also has the nice side-effect that emacs customizations won't be added to the bedrock/init.el file.
+- I will still: (setq custom-file (concat user-emacs-directory "custom.el"))
+- but it's no longer important!
+
+Maybe a few things should be gated by a check that the feature IS wanted
+- e.g. loading of the extra files.
+
+This could be done various ways.
+- A bedrock-features association list of feature -> boolean pairs would work but might be overkill.
