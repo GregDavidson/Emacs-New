@@ -16,7 +16,7 @@
 	   ,(funcall setter '(car new-val))
 	 ,getter ) ) ) )
 
-(ert-deftest place-test ()
+(ert-deftest place-var ()
   (let ( (ref1 (let ( (var 0) ) (place var)))
 	 (ref2 (let ( (var 0) ) (place var))) )
     (should (= (funcall ref1) 0))
@@ -27,16 +27,29 @@
     (should (= (funcall ref2) -1))
     ) )
 
+(ert-deftest place-list ()
+  (let ( (list1 '(1 2 3)) )
+    (let ( (ref1 (place (cl-first list1)))
+	   (ref2 (place (nth 1 list1)))
+	   (ref3 (place (caddr list1))) )
+    (should (= (funcall ref1) 1))
+    (should (= (funcall ref2) 2))
+    (should (= (funcall ref3) 3))
+    (funcall ref1 0)
+    (funcall ref2 1)
+    (funcall ref3 2)
+    (should (equal list1 '(0 1 2)))
+    ) ) )
 
-;; ** (condense-context) required for (my)
+;; ** (condense-context)
 
 ;; We expect context to express some dynamic context for a debugging
-;; or error report, from the &rest argument of some function.
-;; We expect the first element to be a context list for that function
+;; or error report, from the &rest argument of some function.  We
+;; expect the first element to be a context list for that function
 ;; with possible additional elements providing names and/or values
-;; giving more context.  We want the context to be in the form of a
-;; singleton list we can incorporate as a single value in a format message.
-;; ==> Transform context into a singleton list if it isn't one already!
+;; giving more context.  If this is the case, pull the additional
+;; elements into the context list, otherwise just return the content
+;; as a list.  ==> Transform context into a simple(r) list!
 (cl-defun condense-context (context)
   "return any context as a singleton by wrapping it and/or folding its cdr elements into its car"
   (cond
@@ -44,67 +57,85 @@
    ( (null context) context )
    ;; if context is not a list, return it wrapped!
    ( (atom context) (list context) )
-   ;; return a singleton as such
-   ( (and (consp context) (atom (cdr context))) context )
-   ( t ; otherwise, first fold it's cdr into its car
-     (let ( (context (append (car context) (cdr context))) )
-       ;; unless it's a singleton now, wrap it into one!
-       (if (and (consp context) (atom (cdr context)))
-	   context
-	 (list context) ) ) ) ) )
+   ;; we now know that it's a non-empty list
+   ;; if the first element is not a sublist, we're done
+   ( (atom (car context)) context )
+   ;; the first element is a sublist
+   ( t ; fold it's cdr into its car
+     (append (car context) (cdr context))
+     ) ) )
+     
+(ert-deftest condense-test ()
+  (should (null (condense-context nil)))
+  (should (equal (condense-context "org-capture.el") '("org-capture.el")))
+  (should (equal (condense-context '("org-capture.el")) '("org-capture.el")))
+  (should (equal (condense-context '("org-capture.el" some-function))
+		 '("org-capture.el" some-function) ))
+  (should (equal (condense-context '("org-capture.el" some-function 'var-name))
+		 '("org-capture.el" some-function 'var-name) ))
+  )
 
-(condense-context nil)
-(condense-context '("org-capture.el"))
-(condense-context '("org-capture.el" some-function))
-(condense-context '(("org-capture.el" some-function) 'var-name))
+;; ** after-keys
 
-;; ** (my) needs (contense-context)
+;; Helpful in designing a cl-defun parameter list
+;; using &rest and one or more &key arguments.
+;; Note that keywords and following values which
+;; are not specified by an &key argument will be
+;; silently discarded.
 
+;; especially intended for returning the rest of a list
+;; after an initial part consisting of alternating keywords and values
+;; or the list following the keyworld :done.
+
+(defun after-keys (lst)
+  "return list tail following keyword/value elements or :done"
+  (while (and (consp lst)
+	      (keywordp (car lst))
+	      (not (eq (car lst) :done)) )
+    (pop lst) (pop lst) )
+  (if (eq (car lst) :done)
+      (cdr lst)
+    lst ))
+
+(ert-deftest after-keys-test ()
+  (should (equal (after-keys nil) nil))
+  (should (equal (after-keys '(1 2 3)) '(1 2 3)))
+  (should (equal (after-keys '(:done)) nil))
+  (should (equal (after-keys '(:done :done)) '(:done)))
+  (should (equal (after-keys '(:done 1 2 3)) '(1 2 3)))
+  (should (equal (after-keys '(:done :a 1 2 3)) '(:a 1 2 3)))
+  (should (equal (after-keys '(1 :done 2 3)) '(1 :done 2 3)))
+  (should (equal (after-keys '(:a 1 2 3)) '(2 3)))
+  (should (equal (after-keys '(:a 1 :b 2 :c 3)) nil))
+)
+    
+
+;; ** (my) needs (contense-context) and (after-alist)
+
+(cl-defun foo (type-predicate value
+			      &rest context
+			      &key (error 'error) &allow-other-keys
+			      )
+  (format "type %s value %s error %s rest %S tail %S"
+	  type-predicate value error context (after-keys context) ) )
+
+(foo 'stringp 'hello :error 'format "org-capture.el")
+  
 ;; version with workaround for Common Lisp &rest &key infelicity
-(cl-defun my (type-predicate value &rest context &key (error 'error))
+(cl-defun my (type-predicate value &rest context
+			     &key (error 'error) &allow-other-keys
+)
   "like cl-the but with a better error message"
   (if (funcall type-predicate value)
       value
-    ;; Remove &key arguments from front of &rest arguments,
-    ;; workaround for Common Lisp infelicity.
-    (while (and (consp context) (memq (car context) '(:error)))
-      (pop context) (pop context) )
     (let ( (message "expected type %S but got %S")
-	   (context (condense-context context)) ; updated context
+	   (context (condense-context (after-keys context))) ; updated context
 	   (args (list type-predicate value)) )
       ;; update message and args if context non-null
       (let ( (message (if (null context) message (concat "In %S " message)))
 	     (args (if (null context) args (cons context args))) )
 	;; throw an error with the current message and any contextI included
-	(apply error (cons message args)) ) ) ) )
-
-;; (cl-defun my (type-predicate value &rest context &key (error 'error))
-;;   "like cl-the but with a better error message"
-;;   ;; Remove &key arguments from front of &rest arguments,
-;;   ;; workaround for Common Lisp infelicity.
-;;   (while (and (consp context) (memq (car context) '(:error)))
-;;     (pop context) (pop context) )
-;;   (if (funcall type-predicate value)
-;;       value
-;;     ;; BEGIN workaround for cl-defun &key brokenness!!
-;;     ;; if context starts with overriding error, pull out new-error
-;;     (let ( (new-error (and (>= (length context) 2)
-;; 			   (eq :error (cl-first context))
-;; 			   (symbolp (cl-second context))
-;; 			   (symbol-function (cl-second context))
-;; 			   (cl-second context) )) )
-;;       ;; update error and context appropriately
-;;       (let ( (error (or new-error 'error))
-;; 	     (context (if new-error (cddr context) context)) )
-;; 	;; END workaround
-;; 	(let ( (message "expected type %S but got %S")
-;; 	       (context (condense-context context)) ; updated context
-;; 	       (args (list type-predicate value)) )
-;; 	  ;; update message and args if context non-null
-;; 	  (let ( (message (if (null context) message (concat "In %S " message)))
-;; 		 (args (if (null context) args (cons context args))) )
-;; 	    ;; throw an error with the current message and any contextI included
-;; 	    (apply error (cons message args)) ) ) ) ) ) )
+	(apply error message args) ) ) ) )
 
 (ert-deftest my-test ()
   (should (eq 'hello (my 'symbolp 'hello)))
@@ -122,11 +153,12 @@
   (should (equal (my 'stringp 'hello :error 'format "org-capture.el")
 		 "In (\"org-capture.el\") expected type stringp but got hello" ))
   (should (equal (my 'stringp 'hello :error 'format "org-capture.el" 'funny)
-		 "In ((\"org-capture.el\" funny)) expected type stringp but got hello" ))
+		 "In (\"org-capture.el\" funny) expected type stringp but got hello" ))
   (should (equal (my 'stringp 'hello :error 'format '("org-capture.el" funny) 'foo)
-		 "In ((\"org-capture.el\" funny foo)) expected type stringp but got hello" ))
+		 "In (\"org-capture.el\" funny foo) expected type stringp but got hello" ))
   (should (equal (my 'stringp 'hello :error 'format '("org-capture.el" funny) 'foo 5 'bar)
-		 "In ((\"org-capture.el\" funny foo 5 bar)) expected type stringp but got hello" ))  )
+		 "In (\"org-capture.el\" funny foo 5 bar) expected type stringp but got hello" ))
+  )
 
 ;; ** (enlist) - enlist if all non-nil, error otherwise!
 
@@ -155,118 +187,3 @@
 
 (ert-deftest directory-exists?-org-directory ()
   (should (directory-exists? org-directory)) )
-;; ** Workaround for cl-defun conflict between &key and &rest args
-
-;; Common Lisp mis-feature
-;; - Arguments bound by &key will also be part of the &rest list!!
-
-;; Possible Workarounds
-;; 1. Remove &key arguments from &rest arguments
-;;  (dolist ( key '(:k1 :k2) ) (cl-remf args key))
-;; 2. Require that key arguments be first in &rest, then
-;; (while (and (consp args) (memq (car args) '(:k1 :k2))) (pop args) (pop args))
-
-;; *** Experiments
-
-;; This doesn't work: Why??
-(cl-defun kludge1 (arg1 &rest rest-args &key (key 'key-default))
-  (dolist ( key '(:key) ) (cl-remf rest-args key))
-  (message "key %s rest-args %S" key rest-args) )
-
-(kludge1 'hello :key 'key-value "org-capture.el")
-
-;; Error Message, also got a long *Backtrace*
-;; (error "Keyword argument \"org-capture.el\" not one of (:key)")
-
-(kludge1 'hello "org-capture.el" :key 'key-value)
-
-;; (error "Keyword argument \"org-capture.el\" not one of (:key)")
-;; Error Message, also got a long *Backtrace*
-
-;; What we have to work with
-(cl-defun kludge2 (arg1 &rest rest-args)
-  (message "rest-args %S" rest-args) )
-
-(kludge2 'hello :key 'key-value "org-capture.el")
-
-;; Message Result:
-;; rest-args (:key key-value "org-capture.el")
-
-(cl-defun kludge3 (arg1 &rest rest-args)
-  (let ( (key (or (and (consp rest-args) (eq (car rest-args) :key)
-			 (progn (pop rest-args) (pop rest-args)))
-		    'key-default )) )
-    (message "key %s rest-args %S" key rest-args) ) )
-
-(kludge3 'hello :key 'key-value "org-capture.el")
-
-;; *** pop-alist - a function now, part of a macro later?
-
-;; we should evolve cl-defun into my-defun which is better
-;; - fix &rest &key clash
-;; - add optional type checking
-
-;; lst is a list which might begin with an association list,
-;; keys is a list of (either keywordp (cons-of keywordp any))
-;; where the any value is interpreted as a default:
-;; destructively pull out from lst any initial alist where
-;; the alist keys match the keys in keys, returning that alist
-;; nconc'ed with the tail of any elements of keys which have
-;; a default value.
-(cl-defun pop-alist--keys (keys key-accum alist-accum &key (context '(pop-alist--keys)))
-  (cond ( (null keys) (cons key-accum alist-accum) )
-	( (atom keys) (error "%S error: expected keys list, got %s" context keys) )
-	( (and (consp (car keys)) (keywordp (caar keys)))
-	  (pop-alist--keys (cdr keys)
-			  (cons (caar keys) key-accum)
-			  (cons (car keys) alist-accum) ) )
-	( (keywordp (car keys))
-	  (pop-alist--keys (cdr keys) (cons (car keys) key-accum) alist-accum) )
-	( t (error "%S error: expected non-keyword in keys list, %s" context ( car keys)) ) ) )
-
-(pop-alist--keys '(:a (:b b0) :c (:d d0)) nil nil)
-
-(pop-alist--keys '(:a (:b b0) :c (:d d0)) nil nil :context '("my-lib.el" test))
-
-(ert-deftest ert--pop-alist--keys-1 ()
-  (should (equal
-	   (pop-alist--keys '(:a (:b b0) :c (:d d0)) nil nil)
-	   '((:d :c :b :a) (:d d0) (:b b0)) )) )
-
-;; Split a list into an initial alist
-;; - where the keys are part of the alist-spec
-;; and the rest of the list.  Return of cons of
-;; the latter and the former.
-(defun pop-alist (lst alist-spec)
-  (let ( (context (list "my-lib.el" 'pop-alist)) )
-    (let ( (keys+alist (pop-alist--keys alist-spec nil nil :context context)) )
-      (let ( (keys (car keys+alist))
-	     (alist-accum (cdr keys+alist)) )
-	(while (and (consp lst) (keywordp (car lst)) (memq (car lst) keys))
-	  (let ( (key (pop lst)) )
-	    (let ( (val (pop lst)) )
-	      (push (cons key val) alist-accum) ) ) )
-	(cons lst alist-accum) ) ) ) )
-
-(ert-deftest ert--pop-alist-1 ()
-  (should 
-   (equal 
-    (let ( (alist-spec '(:a (:b b0) :c (:d d0))) )
-      (let ( (lst '(:a aa :d dd foo bar)) )
-	(pop-alist lst alist-spec)) )
-    '((foo bar) (:d . dd) (:a . aa) (:d d0) (:b b0)) ) ) )
-
-;; keywords :foo :bar
-(cl-defun kludge4 (arg1 &rest rest-args)
-  (let* ( (keys-spec '(:foo (:bar 'none)))
-	  (rest+alist (pop-alist rest-args keys-spec))
-	  (rest (car keys-spec))
-	  (keys-alist (cdr keys-spec))
-	  (foo (assq :foo keys-alist))
-	  (bar (assq :foo keys-alist)) )
-    (format "arg1 %S foo %S bar %S rest %S\n" arg1 foo bar rest) ) )
-
-;; Doesn't yet work!!!
-(kludge4 'hello 'more 'stuff)
-;; Result: (kludge4 'hello :foo 'foo!)
-
